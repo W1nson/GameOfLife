@@ -12,11 +12,17 @@ integer :: cols, rows, col, row
 integer :: tl, tr, bl, br 
 integer, allocatable :: left(:), right(:), top(:), bot(:)
 integer, allocatable :: displace(:)
-integer :: grid(M, N)
+integer :: grid(M, N), temp(M,N)
 integer :: mycorners(4), corners(4)
 integer, allocatable :: subgrid(:,:), updated(:,:)
 
 integer :: gridprocs
+
+! change the number inside to how many outputs you want to see throughout the iterations 
+integer, parameter :: outs = 4
+integer :: output_iter(outs) 
+integer :: iter_out(outs, M, N)
+integer :: c 
 
 integer, allocatable:: mysubmat(:,:)
 integer :: submat, resizedtype
@@ -30,6 +36,11 @@ double precision :: t1, t2, time
 call MPI_INIT(ierr) 
 call MPI_COMM_RANK(MPI_COMM_WORLD, myid, ierr)
 call MPI_COMM_SIZE(MPI_COMM_WORLD, numprocs, ierr) 
+
+
+
+output_iter = (/0, 20, 40, 80/)
+
 
 ! check if you can split up the columns and rows evenly with the procs 
 ! M = 4, N = 4, procs = 4 
@@ -62,7 +73,7 @@ if(rows * sqrt(real(numprocs)) .ne. M) then
     stop
 endif
 
-
+c = 1
 ! initialize data 
 if (myid .eq. 0) then
 
@@ -83,10 +94,14 @@ if (myid .eq. 0) then
     ! call fill_rand(grid, M, N) 
         
     call print_grid(grid, M, N)
+    if(output_iter(c) == 0) then 
+        iter_out(c,:,:) = grid
+        c = c+1
+    endif
+        
 endif
 
 
-t1 = MPI_Wtime() 
 
 ! 
 ! if (N < numprocs) then 
@@ -142,12 +157,6 @@ call MPI_SCATTERV(grid, counts, displace, resizedtype, mysubmat, rows*cols, MPI_
 ! print *
 ! call print_grid(mysubmat, rows, cols) 
 
-
-
-! scatter 
-! colid = myid*cols + 1
-! rowid = myid*rows + 1
-! 
 allocate(subgrid(rows+2, cols+2)) 
 allocate(updated(rows+2, cols+2))
 subgrid = 0 
@@ -158,6 +167,8 @@ allocate(right(rows))
 allocate(top(cols))
 allocate(bot(cols))
 
+
+t1 = MPI_Wtime() 
 ! iterations  
 do iter = 1, 80 
      
@@ -165,7 +176,7 @@ do iter = 1, 80
     ! find the left and right id 
     ! send the column to the left and right 
     ! check if the col is edge
-     if (myid + gridprocs >= gridprocs**2) then 
+    if (myid + gridprocs >= gridprocs**2) then 
         leftid  = mod(myid + gridprocs, gridprocs)
         rightid = mod(myid + gridprocs, gridprocs)
     else 
@@ -290,9 +301,7 @@ do iter = 1, 80
     ! print *, myid, "subgrid"
     ! call print_grid(subgrid, rows+2, cols+2) 
 
-
     ! evolution update 
-
     do j = 2, cols+1 
         do i = 2, rows+1
             call evo(subgrid, updated, rows+2, cols+2, i, j) 
@@ -300,17 +309,41 @@ do iter = 1, 80
         enddo 
     enddo
 
+    if(myid .eq. 0) then 
+        print *, iter, output_iter(c)
+    endif
+    !if(iter == output_iter(c)) then 
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+        ! print *, "gather"
+    call MPI_Gatherv(mysubmat, cols**2, MPI_INTEGER, grid, counts, displace, resizedtype, 0, MPI_COMM_WORLD, ierr) 
+    if(iter == output_iter(c)) then 
+        iter_out(c, :,:) = grid
+        !if(myid .eq. 0) then 
+        !     print *, iter
+            ! call print_grid(grid, M, N)
+            !print *, "load"
+            ! iter_out(c,:,:) = temp
+        ! endif
+        c = c+1
+    endif
+
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr) 
 enddo 
 
-! gather everything back 
-call MPI_Gatherv(mysubmat, cols**2, MPI_INTEGER, grid, counts, displace, resizedtype, 0, MPI_COMM_WORLD, ierr) 
 
+! gather everything back 
+
+call MPI_Gatherv(mysubmat, cols**2, MPI_INTEGER, grid, counts, displace, resizedtype, 0, MPI_COMM_WORLD, ierr) 
 t2 = MPI_Wtime()
 
 if(myid .eq. 0) then 
     print *, "iteration: ", iter-1 
     print *,  "time: ", (t2-t1)
-    call print_grid(grid, M, N) 
+    do i = 1, outs
+        print *, "iteration:", output_iter(i)  
+        call print_grid(iter_out(i,:,:), M, N)
+    enddo 
+    ! call print_grid(grid, M, N)
 endif 
 
 deallocate(subgrid) 
@@ -326,15 +359,15 @@ stop
 end program gol 
 
 
-subroutine sendCol(myid, numprocs, mysubmat, numcols, numrows, left, right)
+subroutine sendCol(myid, numprocs, mysubmat, numcols, numrows, left, right, status, request, ierr)
 
-    integer :: myid, numprocs, numcols, numrows 
+    integer :: myid, numprocs, numcols, numrows, stat_size 
     integer :: leftid, rightid 
     integer :: tag  
     integer :: mysubmat(numrows, numcols)
     integer, intent(out) :: left(numrows), right(numrows)
     integer :: ierr, request
-    ! integer :: status(MPI_STATUS_SIZE)
+    ! integer :: status(stat_size)
     
 
     tag = 1234 
@@ -426,17 +459,22 @@ end subroutine evo_col
 
 subroutine print_grid(A, M, N) 
     implicit none 
-    integer :: N, M, i 
+    integer :: N, M, i,j 
     integer :: A(M, N) 
     integer :: c 
     c = 0 
-
+     
+    do j = 1, N
+        do i = 1, M
+            write (*, '(i2))', ADVANCE="NO"), A(i, j)
+        enddo
+        print *
+    enddo 
     do i = 1, M
-        print *, A(i, :) 
         c = c+SUM(A(i,:))
     enddo 
     print * 
-    print *, "totoal alive", c 
+    print *, "total alive", c 
     print *
     print *
 
