@@ -309,13 +309,16 @@ do iter = 1, 80
         enddo 
     enddo
 
-    if(myid .eq. 0) then 
-        print *, iter, output_iter(c)
-    endif
-    !if(iter == output_iter(c)) then 
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
-        ! print *, "gather"
+
+    ! if(myid .eq. 0) then 
+    !     print *, iter, output_iter(c)
+    ! endif
+
+    ! if(iter == output_iter(c)) then 
+    !     print *, "gather"
     call MPI_Gatherv(mysubmat, cols**2, MPI_INTEGER, grid, counts, displace, resizedtype, 0, MPI_COMM_WORLD, ierr) 
+        
     if(iter == output_iter(c)) then 
         iter_out(c, :,:) = grid
         !if(myid .eq. 0) then 
@@ -327,7 +330,7 @@ do iter = 1, 80
         c = c+1
     endif
 
-    call MPI_BARRIER(MPI_COMM_WORLD, ierr) 
+    ! call MPI_BARRIER(MPI_COMM_WORLD, ierr) 
 enddo 
 
 
@@ -357,55 +360,6 @@ call MPI_FINALIZE(ierr)
 
 stop
 end program gol 
-
-
-subroutine sendCol(myid, numprocs, mysubmat, numcols, numrows, left, right, status, request, ierr)
-
-    integer :: myid, numprocs, numcols, numrows, stat_size 
-    integer :: leftid, rightid 
-    integer :: tag  
-    integer :: mysubmat(numrows, numcols)
-    integer, intent(out) :: left(numrows), right(numrows)
-    integer :: ierr, request
-    ! integer :: status(stat_size)
-    
-
-    tag = 1234 
-    ! find the left and right id 
-    ! send the column to the left and right 
-    ! check if the col is edge 
-    if (myid .eq. 0) then 
-        leftid  = numprocs - 1
-        rightid = myid + 1 
-    else if (myid .eq. numprocs-1) then 
-        leftid = myid -1 
-        rightid = 0 
-    else 
-        leftid = myid -1 
-        rightid = myid + 1
-    endif 
-
-
-   ! send the right most column to the right proc
-    call MPI_ISEND(mysubmat(:, numcols), numrows, MPI_INTEGER, rightid, tag, MPI_COMM_WORLD, request, ierr)
-    
-    ! receive the right most colum from the left proc
-    call MPI_IRECV(left, numrows, MPI_INTEGER, leftid, tag, MPI_COMM_WORLD, request, ierr)
-    
-    ! waiting for each proc to complete
-    call MPI_WAIT(request, MPI_STATUS_IGNORE, ierr)
-    
-    ! send the left most column to the right proc
-    call MPI_ISEND(mysubmat(:, 1), numrows, MPI_INTEGER, leftid, tag, MPI_COMM_WORLD, request, ierr)
-    
-    ! receive the left most column from the right proc 
-    call MPI_IRECV(right, numrows, MPI_INTEGER, rightid, tag, MPI_COMM_WORLD, request, ierr)
-    
-    ! waiting for each proc to complete
-    call MPI_WAIT(request, MPI_STATUS_IGNORE, ierr)
-end subroutine sendCol
-
-
 
 
 
