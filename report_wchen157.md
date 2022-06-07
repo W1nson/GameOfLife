@@ -35,27 +35,29 @@ In `gol.f90`, I have just implement 4 nodes and 2x2 grid of nodes, to compute wi
 ## Game of Life with 2D decomposition: 
 * gol.f90: is the 2D  decomposition of Game of Life 
 
-To compile and run the program
+To compile and run the program on grape
 ```
 mpif90 -o gol gol.f90
 ```
 
 boot up the compute node and go to the directory where you compile. 
 ```
-mpirun -np <# of processes>(4) gol
+mpirun -np <# of processes>(4) gol > output.txt
+cat output.txt
 ```
 
 ## Game of Life with column decomposition: 
 * gol_col.f90: is a column decomposition of the Game of Life
 
-To compile and run the program
+To compile and run the program on grape
 ```
 mpif90 -o gol_col gol_col.f90
 ```
 
 boot up the compute node and go to the directory where you compile. 
 ```
-mpirun -np <# of processes>(4) gol_col
+mpirun -np <# of processes>(4) gol_col > output.txt
+catoutput.txt
 ```
 
 ## Game of Life with serial: 
