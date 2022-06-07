@@ -24,6 +24,9 @@ integer :: output_iter(outs)
 integer :: iter_out(outs, M, N)
 integer :: c 
 
+integer, parameter :: numiter = 80
+
+
 integer, allocatable:: mysubmat(:,:)
 integer :: submat, resizedtype
 integer :: sizes(2), blockDim(2), starts(2) 
@@ -142,12 +145,12 @@ if (myid .eq. 0) then
     ! displace = (/0, 1, 8, 10/)
 
 
-    print *, "counts" 
-    print *, counts
-    print *  
-    print *, "displace" 
-    print *, displace
-    print * 
+    ! print *, "counts" 
+    ! print *, counts
+    ! print *  
+    ! print *, "displace" 
+    ! print *, displace
+    ! print * 
 endif
 allocate(mysubmat(rows, cols))
 ! scatter each row to each processor 
@@ -170,7 +173,7 @@ allocate(bot(cols))
 
 t1 = MPI_Wtime() 
 ! iterations  
-do iter = 1, 80 
+do iter = 1, numiter
      
     tag = 1234 
     ! find the left and right id 
@@ -311,26 +314,13 @@ do iter = 1, 80
 
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
-    ! if(myid .eq. 0) then 
-    !     print *, iter, output_iter(c)
-    ! endif
-
-    ! if(iter == output_iter(c)) then 
-    !     print *, "gather"
     call MPI_Gatherv(mysubmat, cols**2, MPI_INTEGER, grid, counts, displace, resizedtype, 0, MPI_COMM_WORLD, ierr) 
         
     if(iter == output_iter(c)) then 
         iter_out(c, :,:) = grid
-        !if(myid .eq. 0) then 
-        !     print *, iter
-            ! call print_grid(grid, M, N)
-            !print *, "load"
-            ! iter_out(c,:,:) = temp
-        ! endif
         c = c+1
     endif
 
-    ! call MPI_BARRIER(MPI_COMM_WORLD, ierr) 
 enddo 
 
 
@@ -339,13 +329,13 @@ enddo
 call MPI_Gatherv(mysubmat, cols**2, MPI_INTEGER, grid, counts, displace, resizedtype, 0, MPI_COMM_WORLD, ierr) 
 t2 = MPI_Wtime()
 
-if(myid .eq. 0) then 
-    print *, "iteration: ", iter-1 
-    print *,  "time: ", (t2-t1)
+if(myid .eq. 0) then  
     do i = 1, outs
         print *, "iteration:", output_iter(i)  
         call print_grid(iter_out(i,:,:), M, N)
-    enddo 
+    enddo
+    print *,  "time each iter: ", (t2-t1)/numiter
+    print *, "total time: ", (t2-t1)
     ! call print_grid(grid, M, N)
 endif 
 
