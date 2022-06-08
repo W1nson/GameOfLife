@@ -7,20 +7,29 @@ integer :: ierr, myid, numprocs, request
 integer :: leftid, rightid, tag 
 integer :: status(MPI_STATUS_SIZE)
 integer :: colid
-integer, parameter:: N = 4
-integer, parameter:: M = 4
+integer, parameter:: N = 20
+integer, parameter:: M = 20
 integer :: cols 
 integer :: left(N), right(N) 
-integer :: grid(N, N)
+integer :: grid(M, N)
 integer, allocatable :: subgrid(:,:), updated(:,:), mycols(:,:) 
 
 double precision :: t1, t2, time 
+
+integer, parameter :: iter_max = 80
+integer :: c 
+integer, parameter :: outs = 4
+integer :: output_iter(outs)
+integer :: iter_out(outs, M, N)
 
 call MPI_INIT(ierr) 
 call MPI_COMM_RANK(MPI_COMM_WORLD, myid, ierr)
 call MPI_COMM_SIZE(MPI_COMM_WORLD, numprocs, ierr) 
 
 tag = 1234
+
+
+output_iter = (/0, 20, 40, 80/)
 
 ! check if you can split up the columns evenly with the procs 
 ! N = 10, procs = 5 
@@ -38,21 +47,26 @@ endif
 
 allocate(mycols(M, cols)) 
 
+c = 1
 if (myid .eq. 0) then 
-    ! do j = 1,N 
-    !     do i = 1,N 
-    !         grid(i, j) = 0 
-    !     enddo 
-    ! enddo
-    ! grid(2, 1) = 1
-    ! grid(3, 2) = 1
-    ! grid(1, 3) = 1
-    ! grid(2, 3) = 1
-    ! grid(3, 3) = 1
+    do j = 1,N 
+        do i = 1,N 
+            grid(i, j) = 0 
+        enddo 
+    enddo
+    grid(2, 1) = 1
+    grid(3, 2) = 1
+    grid(1, 3) = 1
+    grid(2, 3) = 1
+    grid(3, 3) = 1
     
-    call fill_rand(grid, M, N) 
+    ! call fill_rand(grid, M, N) 
         
-    ! call print_grid(grid, M, N)
+    call print_grid(grid, M, N)
+    if(output_iter(c) == 0) then 
+        iter_out(c, :,:) = grid
+        c = c+1 
+    endif 
 
 
 endif
@@ -105,7 +119,7 @@ endif
 
 
 ! iterations  
-do iter = 1, 1000 
+do iter = 1, iter_max 
    
     ! send the right most column to the right proc
     call MPI_ISEND(mycols(:, cols), M, MPI_INTEGER, rightid, tag, MPI_COMM_WORLD, request, ierr)
@@ -143,17 +157,26 @@ do iter = 1, 1000
         call evo_col(subgrid, updated, M, cols, i) 
         ! call print_grid(updated, M+2, cols+2)
         mycols(:, i-1) = updated(2:N+1, i) 
-    enddo 
+    enddo
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    call MPI_GATHER(mycols, cols*N, MPI_INTEGER, grid, cols*N, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr) 
+    if(iter == output_iter(c)) then
+        iter_out(c, :,:) = grid
+        c = c+1
+    endif
     ! call print_grid(mycols, M, cols)
 enddo 
 
 ! gather all the columns from other procs back to proc 0 matrix 
 call MPI_GATHER(mycols, cols*N, MPI_INTEGER, grid, cols*N, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr) 
-
 t2 = MPI_Wtime()
 
 if(myid .eq. 0) then 
-    print *, "iteration: ", iter  
+    do i = 1, outs 
+        print *, "iteration:", output_iter(i) 
+        call print_grid(iter_out(i,:,:), M, N)
+    enddo
+
     print *,  "time: ", (t2-t1)
     ! call print_grid(grid, M, N) 
 endif 
@@ -230,15 +253,21 @@ end subroutine evo_col
 
 subroutine print_grid(A, M, N) 
     implicit none 
-    integer :: N, M, i 
+    integer :: N, M, i,j 
     integer :: A(M, N) 
     integer :: c 
     c = 0 
 
+    do j = 1, N
+        do i = 1, M
+            write (*, '(i2))', ADVANCE="NO"), A(i, j)
+        enddo
+        print *
+    enddo
     do i = 1, M
-        print *, A(i, :) 
         c = c+SUM(A(i,:))
-    enddo 
+    enddo
+
     print * 
     print *, "totoal alive", c 
     print *
